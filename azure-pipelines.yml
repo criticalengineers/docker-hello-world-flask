@@ -1,19 +1,42 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
-trigger:
-- main
+trigger: none
 
 pool:
   vmImage: ubuntu-latest
 
 steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+- task: DockerCompose@1
+  displayName: Build Docker Compose services
+  inputs:
+    containerregistrytype: 'Azure Container Registry'
+    azureSubscription: 'Managed Identity' # Service connection for ACR authentication
+    dockerComposeFile: 'docker-compose.yml' # Path to your docker-compose.yml
+    action: 'Build services'
+    dockerComposeFileArgs: |
+      BUILD_ID=$(Build.BuildId)
+    additionalImageTags: |
+      develop
+      $(Build.BuildId)
+    projectName: 'masapp' # Base name for images (e.g., masapp/service-name)
 
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+- task: DockerCompose@1
+  displayName: Push Docker Compose services to ACR
+  inputs:
+    containerregistrytype: 'Azure Container Registry'
+    azureSubscription: 'Managed Identity'
+    dockerComposeFile: 'docker-compose.yml'
+    action: 'Push services'
+    dockerComposeFileArgs: |
+      BUILD_ID=$(Build.BuildId)
+    additionalImageTags: |
+      develop
+      $(Build.BuildId)
+    projectName: 'masapp'
+
+- task: AzureContainerApps@1
+  inputs:
+    azureSubscription: 'Managed Identity'
+    acrName: 'mascontainers'
+    imageToDeploy: 'mascontainers.azurecr.io/masapp/web:$(Build.BuildId)' # Adjust to specific service name
+    containerAppName: 'masapp-dev'
+    resourceGroup: 'MAS-APP-RG'
+    containerAppEnvironment: 'mas-app-dev-env'
